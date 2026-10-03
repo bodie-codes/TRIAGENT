@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, String, Text, DateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 load_dotenv()
-engine = create_engine(os.getenv("DATABASE_URL"))
+engine = create_engine(os.getenv("DATABASE_URL"), pool_pre_ping=True)
 
 
 class Base(DeclarativeBase):
