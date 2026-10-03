@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:17
+    container_name: triagent-db
+    environment:
+      POSTGRES_USER: triagent
+      POSTGRES_PASSWORD: triagent
+      POSTGRES_DB: triagent
+    ports:
+      - "5433:5432"
+    volumes:
+      - triagent-data:/var/lib/postgresql/data
+
+volumes:
+  triagent-data:

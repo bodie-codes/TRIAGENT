@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Triagent – Live Demo</title>
+  <style>
+    :root {
+      --bg: #07090d; --panel: #0d1219; --line: #1c2633;
+      --text: #e6edf5; --muted: #7d8a9a; --blue: #2f80ff; --red: #ff5c5c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, "Inter", "Segoe UI", sans-serif; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 56px 20px; }
+    .label { color: var(--blue); letter-spacing: .3em; font-size: 12px; }
+    h1 { font-size: 40px; margin: 10px 0 6px; }
+    .sub { color: var(--muted); margin: 0 0 32px; }
+    textarea { width: 100%; min-height: 120px; background: var(--panel);
+      border: 1px solid var(--line); color: var(--text); padding: 16px;
+      font: inherit; resize: vertical; }
+    textarea:focus { outline: none; border-color: var(--blue); }
+    .examples { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 20px; }
+    .examples button { background: none; border: 1px solid var(--line);
+      color: var(--muted); padding: 6px 12px; font-size: 12px; cursor: pointer; }
+    .examples button:hover { color: var(--text); border-color: var(--blue); }
+    .send { background: none; border: 1px solid var(--blue); color: var(--text);
+      padding: 14px 28px; letter-spacing: .2em; font-size: 13px; cursor: pointer; }
+    .send:disabled { opacity: .4; cursor: default; }
+    .steps { margin: 36px 0; border-left: 1px solid var(--line); padding-left: 24px; }
+    .step { position: relative; padding: 10px 0; color: var(--muted); transition: color .3s; }
+    .step::before { content: ""; position: absolute; left: -30px; top: 15px;
+      width: 11px; height: 11px; border-radius: 50%; background: var(--bg);
+      border: 1px solid var(--line); }
+    .step.working, .step.done { color: var(--text); }
+    .step.working::before { border-color: var(--blue); animation: pulse 1.2s infinite; }
+    .step.done::before { background: var(--blue); border-color: var(--blue); }
+    .step.failed::before { background: var(--red); border-color: var(--red); }
+    .step small { display: block; color: var(--muted); font-size: 13px; margin-top: 4px; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(47,128,255,.6); }
+      100% { box-shadow: 0 0 0 10px rgba(47,128,255,0); }
+    }
+    .card { background: var(--panel); border: 1px solid var(--line);
+      padding: 20px; margin-top: 16px; display: none; }
+    .card h3 { margin: 0 0 12px; font-size: 12px; letter-spacing: .2em; color: var(--muted); }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .chip { border: 1px solid var(--line); padding: 4px 10px; font-size: 12px;
+      letter-spacing: .1em; text-transform: uppercase; }
+    .chip.blue { border-color: var(--blue); color: var(--blue); }
+    .reply { white-space: pre-wrap; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="label">TRIAGENT · LIVE DEMO</div>
+    <h1>Send a message.</h1>
+    <p class="sub">Watch the AI read it, sort it and draft a reply in real time.</p>
+
+    <textarea id="msg" placeholder="Write a message like a customer would…"></textarea>
+    <div class="examples">
+      <button data-text="Hi, my order #4521 arrived broken and I need a replacement before Friday. This is really frustrating. – John Smith">Complaint</button>
+      <button data-text="Hello, could you send me a quote for 50 branded coffee mugs for our company event? Thanks, Sarah Lee">Inquiry</button>
+      <button data-text="Dobrý den, prosím o zaslání faktury k objednávce č. 3390. Děkuji, Tomáš Dvořák">Czech invoice</button>
+      <button data-text="CONGRATULATIONS!!! You have won $1,000,000. Click here to claim your prize now!">Spam</button>
+    </div>
+    <button class="send" id="send">PROCESS MESSAGE →</button>
+
+    <div class="steps">
+      <div class="step" id="step-received">Message received<small></small></div>
+      <div class="step" id="step-triage">Reading &amp; sorting<small></small></div>
+      <div class="step" id="step-reply">Drafting a reply<small></small></div>
+      <div class="step" id="step-save">Saving to database<small></small></div>
+      <div class="step" id="step-notify">Notifying the team<small></small></div>
+    </div>
+
+    <div class="card" id="result-card">
+      <h3>AI ANALYSIS</h3>
+      <div class="chips" id="chips"></div>
+      <div id="summary"></div>
+    </div>
+    <div class="card" id="reply-card">
+      <h3>DRAFT REPLY</h3>
+      <div class="reply" id="reply"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    document.querySelectorAll(".examples button").forEach((b) => {
+      b.onclick = () => ($("msg").value = b.dataset.text);
+    });
+
+    function setStep(name, status, note = "") {
+      const el = $("step-" + name);
+      el.className = "step " + status;
+      el.querySelector("small").textContent = note;
+    }
+
+    function reset() {
+       ["received", "triage", "reply", "save", "notify"].forEach((s) => setStep(s, ""));      $("result-card").style.display = "none";
+      $("reply-card").style.display = "none";
+    }
+
+    function addChip(text, blue) {
+      if (!text) return;
+      const c = document.createElement("span");
+      c.className = "chip" + (blue ? " blue" : "");
+      c.textContent = text;
+      $("chips").appendChild(c);
+    }
+
+    function handle(ev) {
+      const d = ev.data;
+      if (ev.status === "working") return setStep(ev.step, "working", "Working…");
+      if (ev.status === "failed")
+        return setStep(ev.step, "failed", "Something went wrong. Please try again in a minute.");
+
+      if (ev.step === "received") setStep("received", "done", d.length + " characters");
+
+      if (ev.step === "triage") {
+        setStep("triage", "done", "Detected: " + d.category + " · " + d.language);
+        $("chips").innerHTML = "";
+        addChip(d.category, true);
+        addChip("urgency: " + d.urgency);
+        addChip(d.sender_name);
+        if (d.order_number) addChip("order #" + d.order_number);
+        $("summary").textContent = d.summary;
+        $("result-card").style.display = "block";
+      }
+
+      if (ev.step === "reply") {
+        setStep("reply", "done", d.draft_reply ? "Reply ready" : "Skipped – no reply for spam");
+        if (d.draft_reply) {
+          $("reply").textContent = d.draft_reply;
+          $("reply-card").style.display = "block";
+        }
+      }
+
+      if (ev.step === "save") setStep("save", "done", "Saved as message #" + d.id);
+      if (ev.step === "notify")
+        setStep("notify", "done",
+          d.skipped ? "Skipped – spam is never forwarded"
+          : d.sent ? "Alert sent to Telegram"
+          : "Telegram is not configured");
+    }
+
+    $("send").onclick = async () => {
+      const message = $("msg").value.trim();
+      if (!message) return;
+      reset();
+      $("send").disabled = true;
+
+      try {
+        const res = await fetch("/process/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop();
+          for (const part of parts) {
+            if (part.startsWith("data: ")) handle(JSON.parse(part.slice(6)));
+          }
+        }
+      } catch (e) {
+        setStep("received", "failed", "Could not reach the server.");
+      }
+
+      $("send").disabled = false;
+    };
+  </script>
+</body>
+</html>
+
