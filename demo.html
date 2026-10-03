@@ -32,7 +32,7 @@
     .step::before { content: ""; position: absolute; left: -30px; top: 15px;
       width: 11px; height: 11px; border-radius: 50%; background: var(--bg);
       border: 1px solid var(--line); }
-    .step.working, .step.done { color: var(--text); }
+    .step.working, .step.done, .step.failed { color: var(--text); }
     .step.working::before { border-color: var(--blue); animation: pulse 1.2s infinite; }
     .step.done::before { background: var(--blue); border-color: var(--blue); }
     .step.failed::before { background: var(--red); border-color: var(--red); }
@@ -57,7 +57,7 @@
     <h1>Send a message.</h1>
     <p class="sub">Watch the AI read it, sort it and draft a reply in real time.</p>
 
-    <textarea id="msg" placeholder="Write a message like a customer would…"></textarea>
+    <textarea id="msg" maxlength="2000" placeholder="Write a message like a customer would…"></textarea>
     <div class="examples">
       <button data-text="Hi, my order #4521 arrived broken and I need a replacement before Friday. This is really frustrating. – John Smith">Complaint</button>
       <button data-text="Hello, could you send me a quote for 50 branded coffee mugs for our company event? Thanks, Sarah Lee">Inquiry</button>
@@ -99,7 +99,8 @@
     }
 
     function reset() {
-       ["received", "triage", "reply", "save", "notify"].forEach((s) => setStep(s, ""));      $("result-card").style.display = "none";
+      ["received", "triage", "reply", "save", "notify"].forEach((s) => setStep(s, ""));
+      $("result-card").style.display = "none";
       $("reply-card").style.display = "none";
     }
 
@@ -139,6 +140,7 @@
       }
 
       if (ev.step === "save") setStep("save", "done", "Saved as message #" + d.id);
+
       if (ev.step === "notify")
         setStep("notify", "done",
           d.skipped ? "Skipped – spam is never forwarded"
@@ -158,6 +160,15 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
         });
+
+        if (!res.ok) {
+          let note = "Something went wrong. Please try again.";
+          if (res.status === 429) note = (await res.json()).detail;
+          if (res.status === 422) note = "Please write between 5 and 2000 characters.";
+          setStep("received", "failed", note);
+          return;
+        }
+
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -174,11 +185,10 @@
         }
       } catch (e) {
         setStep("received", "failed", "Could not reach the server.");
+      } finally {
+        $("send").disabled = false;
       }
-
-      $("send").disabled = false;
     };
   </script>
 </body>
 </html>
-

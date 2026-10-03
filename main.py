@@ -1,15 +1,21 @@
 import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
-from fastapi import FastAPI
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from triage import triage, draft_reply, TriageResult
 from database import engine, Message, create_tables
 from notify import send_alert
+from limits import check_limits
+
+load_dotenv()
+ADMIN_KEY = os.getenv("ADMIN_KEY")
 
 
 # When the server starts, make sure the table exists
@@ -26,9 +32,9 @@ app = FastAPI(
 )
 
 
-# What the server receives
+# What the server receives (5 to 2000 characters)
 class IncomingMessage(BaseModel):
-    message: str
+    message: str = Field(min_length=5, max_length=2000)
 
 
 # What the server sends back after processing
@@ -49,6 +55,21 @@ class SavedMessage(BaseModel):
     sender_name: Optional[str]
     summary: str
     draft_reply: Optional[str]
+
+
+# Finds out who the visitor is (by their internet address)
+def get_visitor(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# Stops the request if the visitor has sent too many messages
+def guard(request: Request):
+    problem = check_limits(get_visitor(request))
+    if problem:
+        raise HTTPException(status_code=429, detail=problem)
 
 
 # Saves one processed message into the database and returns its id
@@ -88,7 +109,8 @@ def demo():
 
 # Main door: process a message and return everything at once
 @app.post("/process")
-def process(incoming: IncomingMessage) -> ProcessedMessage:
+def process(incoming: IncomingMessage, request: Request) -> ProcessedMessage:
+    guard(request)
     result = triage(incoming.message)
     reply = draft_reply(incoming.message, result)
     saved_id = save_message(incoming.message, result, reply)
@@ -99,7 +121,9 @@ def process(incoming: IncomingMessage) -> ProcessedMessage:
 
 # Live door: process a message and report every step as it happens
 @app.post("/process/stream")
-def process_stream(incoming: IncomingMessage):
+def process_stream(incoming: IncomingMessage, request: Request):
+    guard(request)
+
     def run():
         step = "received"
         try:
@@ -133,9 +157,12 @@ def process_stream(incoming: IncomingMessage):
     return StreamingResponse(run(), media_type="text/event-stream")
 
 
-# List of the 20 newest saved messages
+# List of the 20 newest saved messages (only with the admin key)
 @app.get("/messages")
-def list_messages() -> list[SavedMessage]:
+def list_messages(key: str = "") -> list[SavedMessage]:
+    if not ADMIN_KEY or key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Not allowed.")
+
     with Session(engine) as session:
         rows = session.scalars(
             select(Message).order_by(Message.id.desc()).limit(20)
