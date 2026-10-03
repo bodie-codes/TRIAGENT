@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from triage import triage, draft_reply, TriageResult
 from database import engine, Message, create_tables
-from notify import send_alert
+from notify import build_alert_text, send_alert
 from limits import check_limits
 
 load_dotenv()
@@ -115,7 +115,7 @@ def process(incoming: IncomingMessage, request: Request) -> ProcessedMessage:
     reply = draft_reply(incoming.message, result)
     saved_id = save_message(incoming.message, result, reply)
     if result.category != "spam":
-        send_alert(result, saved_id)
+        send_alert(build_alert_text(result, saved_id))
     return ProcessedMessage(id=saved_id, triage=result, draft_reply=reply)
 
 
@@ -149,8 +149,9 @@ def process_stream(incoming: IncomingMessage, request: Request):
                 yield event(step, "done", {"skipped": True})
             else:
                 yield event(step, "working")
-                sent = send_alert(result, saved_id)
-                yield event(step, "done", {"sent": sent})
+                alert_text = build_alert_text(result, saved_id)
+                sent = send_alert(alert_text)
+                yield event(step, "done", {"sent": sent, "text": alert_text})
         except Exception:
             yield event(step, "failed")
 

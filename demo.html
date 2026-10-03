@@ -42,13 +42,26 @@
       100% { box-shadow: 0 0 0 10px rgba(47,128,255,0); }
     }
     .card { background: var(--panel); border: 1px solid var(--line);
-      padding: 20px; margin-top: 16px; display: none; }
+      padding: 20px; margin-top: 16px; display: none; animation: appear .4s ease; }
+    @keyframes appear {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .card h3 { margin: 0 0 12px; font-size: 12px; letter-spacing: .2em; color: var(--muted); }
     .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .chip { border: 1px solid var(--line); padding: 4px 10px; font-size: 12px;
       letter-spacing: .1em; text-transform: uppercase; }
     .chip.blue { border-color: var(--blue); color: var(--blue); }
     .reply { white-space: pre-wrap; line-height: 1.6; }
+    .phone { max-width: 380px; background: #161d27; border: 1px solid var(--line);
+      border-radius: 18px; padding: 14px 16px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+    .phone-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .phone-icon { width: 28px; height: 28px; border-radius: 8px; background: var(--blue);
+      display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; }
+    .phone-app { font-size: 13px; font-weight: 600; }
+    .phone-time { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .phone-text { white-space: pre-wrap; line-height: 1.5; font-size: 14px; }
+    .note { margin-top: 12px; font-size: 13px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -79,9 +92,23 @@
       <div class="chips" id="chips"></div>
       <div id="summary"></div>
     </div>
+
     <div class="card" id="reply-card">
       <h3>DRAFT REPLY</h3>
       <div class="reply" id="reply"></div>
+    </div>
+
+    <div class="card" id="alert-card">
+      <h3>📱 SENT TO THE TEAM'S PHONE</h3>
+      <div class="phone">
+        <div class="phone-top">
+          <div class="phone-icon">T</div>
+          <div class="phone-app">Triagent Alerts</div>
+          <div class="phone-time">now</div>
+        </div>
+        <div class="phone-text" id="alert-text"></div>
+      </div>
+      <div class="note" id="alert-note"></div>
     </div>
   </div>
 
@@ -100,8 +127,7 @@
 
     function reset() {
       ["received", "triage", "reply", "save", "notify"].forEach((s) => setStep(s, ""));
-      $("result-card").style.display = "none";
-      $("reply-card").style.display = "none";
+      ["result-card", "reply-card", "alert-card"].forEach((c) => ($(c).style.display = "none"));
     }
 
     function addChip(text, blue) {
@@ -141,11 +167,20 @@
 
       if (ev.step === "save") setStep("save", "done", "Saved as message #" + d.id);
 
-      if (ev.step === "notify")
+      if (ev.step === "notify") {
         setStep("notify", "done",
           d.skipped ? "Skipped – spam is never forwarded"
           : d.sent ? "Alert sent to Telegram"
           : "Telegram is not configured");
+
+        if (d.text) {
+          $("alert-text").textContent = d.text;
+          $("alert-note").textContent = d.sent
+            ? "This alert was just delivered to the business owner's phone via Telegram."
+            : "Preview only – Telegram delivery is not configured.";
+          $("alert-card").style.display = "block";
+        }
+      }
     }
 
     $("send").onclick = async () => {
